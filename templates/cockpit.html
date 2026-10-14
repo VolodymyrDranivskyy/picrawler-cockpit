@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PiCrawler Cockpit</title>
+<style>
+:root{--bg:#12141a;--card:#1c202a;--primary:#2878e8;--success:#238b45;--warning:#ffc107;--text:#e1e7f0;--border:#2e3547}
+*{box-sizing:border-box}
+body{font-family:Segoe UI,Tahoma,sans-serif;background:var(--bg);color:var(--text);margin:0;padding:20px;display:flex;flex-direction:column;align-items:center}
+h1{margin:0 0 18px;font-size:1.5rem}
+.dashboard{display:grid;grid-template-columns:1fr;gap:16px;max-width:950px;width:100%}
+@media(min-width:760px){.dashboard{grid-template-columns:3fr 2fr}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;box-shadow:0 4px 12px #0004;min-width:0}
+.video-box{display:flex;flex-direction:column;align-items:center}
+.video-box img{width:100%;aspect-ratio:4/3;max-height:480px;object-fit:contain;background:#000;border-radius:8px}
+.robot-speech{width:100%;margin-top:12px;padding:14px;background:linear-gradient(135deg,#1e3a5f,#2a5298);border-radius:10px;font-size:1.05rem;font-weight:600;text-align:center;min-height:50px;display:flex;align-items:center;justify-content:center;transition:all .3s;line-height:1.4}
+.robot-speech.empty{background:#252b3a;color:#5a6478;font-weight:400;font-size:.9rem}
+.robot-speech.asking{background:linear-gradient(135deg,#c78a1a,#ffc107);color:#1a1a1a;animation:pulse 1.5s infinite}
+.robot-speech.known{background:linear-gradient(135deg,#1a6b3a,#238b45)}
+.robot-speech.saved{background:linear-gradient(135deg,#1a6b3a,#2878e8)}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 #ffc10766}50%{box-shadow:0 0 0 10px #ffc10700}}
+.mode-panel{display:flex;gap:8px;margin-top:12px;width:100%}
+button{color:#fff;background:#30394d;border:1px solid var(--border);border-radius:8px;padding:12px;font-weight:700;cursor:pointer;touch-action:manipulation}
+button:hover{filter:brightness(1.15)}
+button:disabled{opacity:.55;cursor:wait}
+.mode-btn{flex:1;font-size:.9rem}
+.active-walk{background:var(--success)}
+.active-greet{background:var(--primary);animation:pulse 2s infinite}
+.telemetry-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.metric{background:#252b3a;padding:10px;border-radius:8px;text-align:center;min-width:0}
+.metric .label{font-size:.72rem;color:#9aa8c1;text-transform:uppercase}
+.metric .value{font-size:1.1rem;font-weight:700;margin-top:5px;overflow-wrap:anywhere}
+.dpad{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-width:270px;margin:18px auto 0}
+.dpad button{min-height:48px;font-size:1.1rem;user-select:none;-webkit-user-select:none;transition:background .15s, box-shadow .15s}
+.dpad button.active{background:var(--success);box-shadow:0 0 0 2px #fff2 inset,0 0 12px #238b4599}
+.face-register{margin-top:15px;padding-top:14px;border-top:1px solid var(--border);display:none}
+.face-register.active{display:block}
+.face-register input{width:100%;padding:10px;margin:0 0 8px;background:#252b3a;border:1px solid var(--border);border-radius:6px;color:white;font-size:1rem}
+.btn-save{width:100%;background:var(--primary);padding:14px;font-size:1rem}
+.status{font-size:.8rem;color:#9aa8c1;margin-top:12px;text-align:center;line-height:1.4}
+#message{min-height:1.2em;margin-top:10px;font-size:.9rem;color:#b9c5d9;text-align:center}
+</style>
+</head>
+<body>
+<h1>🤖 PiCrawler Cockpit</h1>
+<div class="dashboard">
+  <section class="card video-box">
+    <img src="/video_feed" alt="Robot camera feed">
+    <div id="robotSpeech" class="robot-speech empty">
+      Press "Greet Mode" to start the introduction
+    </div>
+    <div class="mode-panel">
+      <button id="btnWalkCam" class="mode-btn" type="button">📷 Walk Cam: OFF</button>
+      <button id="btnGreet"   class="mode-btn" type="button">👋 Greet Mode: OFF</button>
+    </div>
+    <div id="message" role="status" aria-live="polite"></div>
+  </section>
+
+  <section class="card">
+    <div class="telemetry-grid">
+      <div class="metric"><div class="label">Battery</div>   <div class="value" id="valBat">-- V</div></div>
+      <div class="metric"><div class="label">Distance</div>  <div class="value" id="valDist">-- cm</div></div>
+      <div class="metric" style="grid-column:span 2">
+        <div class="label">AI Recognition</div>
+        <div class="value" id="valAi">Not detected</div>
+      </div>
+    </div>
+
+    <div id="faceRegisterBox" class="face-register">
+      <div style="font-size:.85rem;margin-bottom:8px;color:#a0aec0">
+        The robot did not recognize you. Please fill in:
+      </div>
+      <input type="text" id="faceName"  maxlength="80"  placeholder="What is your name?" autocomplete="off">
+      <input type="text" id="faceHobby" maxlength="120" placeholder="Your hobby (Robotics, music, sport...)" autocomplete="off">
+      <button class="btn-save" id="btnSave" type="button">Remember me</button>
+    </div>
+
+    <div class="dpad" aria-label="Robot control">
+      <span></span>
+      <button data-move="forward" aria-label="Forward">▲</button>
+      <span></span>
+      <button data-move="left"    aria-label="Left">◀</button>
+      <button data-move="stand"   aria-label="Stand">●</button>
+      <button data-move="right"   aria-label="Right">▶</button>
+      <span></span>
+      <button data-move="backward" aria-label="Backward">▼</button>
+      <button data-move="sit">Sit</button>
+    </div>
+
+    <div class="status" id="health">Checking system status…</div>
+    <div class="status" style="margin-top:6px">
+      <label style="cursor:pointer">
+        <input type="checkbox" id="ttsToggle" checked> 🔊 Speak robot replies
+      </label>
+    </div>
+  </section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const TOKEN = new URLSearchParams(location.search).get('token') || '';
+
+let mode = 'OFF';
+let telemetryBusy = false;
+let lastMessageId = 0;
+let lastSpokenText = '';
+
+function showMessage(text, error=false) {
+  $('message').textContent = text || '';
+  $('message').style.color = error ? '#ff8585' : '#b9c5d9';
+}
+
+async function api(url, options={}) {
+  const sep = url.includes('?') ? '&' : '?';
+  const finalUrl = TOKEN ? url + sep + 'token=' + encodeURIComponent(TOKEN) : url;
+  const response = await fetch(finalUrl, {cache:'no-store', ...options});
+  let data;
+  try { data = await response.json(); }
+  catch { throw new Error(`Server returned non-JSON (HTTP ${response.status})`); }
+  if (!response.ok || data.status === 'error') throw new Error(data.message || `HTTP ${response.status}`);
+  return data;
+}
+
+function speak(text) {
+  if (!$('ttsToggle').checked) return;
+  if (!window.speechSynthesis) return;
+  if (!text || text === lastSpokenText) return;
+  lastSpokenText = text;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'en-US';
+  u.rate = 0.95;
+  u.pitch = 1.1;
+  speechSynthesis.speak(u);
+}
+
+function renderSpeech(state, text, msgId) {
+  const el = $('robotSpeech');
+  el.classList.remove('empty', 'asking', 'known', 'saved');
+
+  if (!text || state === 'IDLE') {
+    el.classList.add('empty');
+    el.textContent = 'Press "Greet Mode" to start the introduction';
+    return;
+  }
+
+  el.textContent = text;
+
+  if (state === 'ASKING')           el.classList.add('asking');
+  else if (state === 'KNOWN_FACE')  el.classList.add('known');
+  else if (state === 'SAVED')       el.classList.add('saved');
+
+  if (msgId && msgId !== lastMessageId) {
+    lastMessageId = msgId;
+    speak(text);
+  }
+
+  $('faceRegisterBox').classList.toggle('active', state === 'ASKING');
+}
+
+function renderMode(nextMode) {
+  mode = nextMode || 'OFF';
+  const walk  = mode === 'WALK';
+  const greet = mode === 'GREET';
+  $('btnWalkCam').classList.toggle('active-walk', walk);
+  $('btnGreet').classList.toggle('active-greet', greet);
+  $('btnWalkCam').textContent = `📷 Walk Cam: ${walk  ? 'ON' : 'OFF'}`;
+  $('btnGreet').textContent   = `👋 Greet Mode: ${greet ? 'ON' : 'OFF'}`;
+}
+
+function renderActiveMotion(activeMotion) {
+  document.querySelectorAll('.dpad button[data-move]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.move === activeMotion);
+  });
+}
+
+async function toggleMode(endpoint) {
+  const buttons = [$('btnWalkCam'), $('btnGreet')];
+  buttons.forEach(b => b.disabled = true);
+  try {
+    const data = await api(endpoint, {method:'POST'});
+    renderMode(data.mode);
+    showMessage(data.mode === 'GREET'
+      ? 'Robot is looking up and searching for a face…'
+      : 'Mode disabled.');
+  } catch (e) { showMessage(e.message, true); }
+  finally { buttons.forEach(b => b.disabled = false); }
+}
+
+$('btnWalkCam').addEventListener('click', () => toggleMode('/api/mode/walk_cam'));
+$('btnGreet').addEventListener('click',   () => toggleMode('/api/mode/greet_face'));
+
+async function sendMove(action) {
+  try {
+    const data = await api('/api/move', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action})
+    });
+    if (data.active_motion !== undefined) renderActiveMotion(data.active_motion);
+    if (data.active === true)  showMessage(`Moving: ${action} (press again to stop)`);
+    else if (data.active_motion === null) showMessage('Stopped.');
+  } catch (e) { showMessage(`Error: ${e.message}`, true); }
+}
+
+document.querySelectorAll('[data-move]').forEach(btn => {
+  btn.addEventListener('click', () => sendMove(btn.dataset.move));
+});
+
+$('btnSave').addEventListener('click', async () => {
+  const name  = $('faceName').value.trim();
+  const hobby = $('faceHobby').value.trim();
+  if (!name) { showMessage("Please enter your name.", true); return; }
+  $('btnSave').disabled = true;
+  try {
+    const data = await api('/api/ai/save_profile', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, hobby})
+    });
+    showMessage(`✅ ${data.name} — remembered!`);
+    $('faceName').value  = '';
+    $('faceHobby').value = '';
+    $('faceRegisterBox').classList.remove('active');
+  } catch (e) { showMessage(e.message, true); }
+  finally { $('btnSave').disabled = false; }
+});
+
+window.addEventListener('keydown', e => {
+  if (['INPUT','TEXTAREA'].includes(document.activeElement.tagName) || e.repeat) return;
+  const keys = {
+    'w':'forward','arrowup':'forward',
+    's':'backward','arrowdown':'backward',
+    'a':'left','arrowleft':'left',
+    'd':'right','arrowright':'right',
+    ' ':'stand'
+  };
+  const action = keys[e.key.toLowerCase()];
+  if (action) { e.preventDefault(); sendMove(action); }
+});
+
+async function refreshTelemetry() {
+  if (telemetryBusy) return;
+  telemetryBusy = true;
+  try {
+    const data = await api('/api/telemetry');
+    $('valBat').textContent  = data.battery  == null ? '-- V'  : `${data.battery} V`;
+    $('valDist').textContent = data.distance == null ? '-- cm' : `${data.distance} cm`;
+
+    const ai = $('valAi');
+    if (data.ai_status === 'KNOWN') {
+      ai.textContent = `${data.user_name} (${data.user_hobby || 'Robotics'})`;
+      ai.style.color = 'var(--success)';
+    } else if (data.ai_status === 'UNKNOWN') {
+      ai.textContent = 'Unknown face';
+      ai.style.color = 'var(--warning)';
+    } else {
+      ai.textContent = 'Not detected';
+      ai.style.color = '#9aa8c1';
+    }
+
+    if (data.current_mode !== mode) renderMode(data.current_mode);
+    if (data.active_motion !== undefined) renderActiveMotion(data.active_motion);
+
+    renderSpeech(data.greet_state, data.greet_message, data.greet_message_id);
+  } catch (e) {
+    $('health').textContent = `Telemetry unavailable: ${e.message}`;
+  } finally {
+    telemetryBusy = false;
+  }
+}
+
+async function refreshHealth() {
+  try {
+    const h = await api('/api/health');
+    $('health').textContent =
+      `Camera: ${h.camera_available ? 'OK' : '—'} · ` +
+      `Robot: ${h.robot_available ? 'OK' : '—'} · ` +
+      `Ultrasonic: ${h.sonar_available ? 'OK' : '—'} · ` +
+      `ADC: ${h.adc_available ? 'OK' : '—'} · ` +
+      `Cascade: ${h.face_cascade_loaded ? 'OK' : '—'} · ` +
+      `Profiles: ${h.profiles}`;
+  } catch {
+    $('health').textContent = 'Could not fetch system status.';
+  }
+}
+
+refreshTelemetry();
+refreshHealth();
+setInterval(refreshTelemetry, 1000);
+setInterval(refreshHealth, 10000);
+</script>
+</body>
+</html>
